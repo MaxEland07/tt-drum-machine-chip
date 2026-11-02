@@ -85,9 +85,24 @@ module ip_hat #(
 
     wire signed [12:0] bright = mixed;
 
+    // Register both multiply inputs on the same clock, so the multiply starts from flops and the
+    // waveform and envelope stay in step. The sample comes out one clock later.
+    reg signed [12:0] bright_q;
+    reg        [5:0]  level_q;
+
+    always @(posedge clk) begin
+        if (!rst_n) begin
+            bright_q <= 13'sd0;
+            level_q  <= 6'd0;
+        end else begin
+            bright_q <= bright;
+            level_q  <= env[15:10];
+        end
+    end
+
     // Apply hi-hat envelope
     wire signed [24:0] product =
-        bright * $signed({1'b0, env[15:10]});
+        bright_q * $signed({1'b0, level_q});
 
     assign sample = product >>> 6;
 
