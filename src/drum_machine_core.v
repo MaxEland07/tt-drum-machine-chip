@@ -93,10 +93,34 @@ module drum_machine_core #(
     // But it sounds ok and fits on die so I will keep.
     // ---------------------------------------------------------------------------------------------
     
-    wire signed [12:0] hat_mix = hat_sample >>> 2;
+    // ---------------------------------------------------------------------------------------------
+    // PIPELINE -- why the samples and the level are registered
+    // ---------------------------------------------------------------------------------------------
+    // Waveform, multiply, mix, clip and the DAC compare used to be one combinational path, which
+    // takes about 75 ns on GF180 at the slow corner, three clocks at 25 MHz. Each voice now
+    // registers its multiply inputs, the core registers the three samples, and then the level.
+    // That splits the path into three short stages. The audio comes out three clocks later
+    // (120 ns), and nothing else about it changes.
+    reg signed [9:0]  kick_q;
+    reg signed [9:0]  snare_q;
+    reg signed [12:0] hat_q;
+
+    always @(posedge clk) begin
+        if (!rst_n) begin
+            kick_q  <= 10'sd0;
+            snare_q <= 10'sd0;
+            hat_q   <= 13'sd0;
+        end else begin
+            kick_q  <= kick_sample;
+            snare_q <= snare_sample;
+            hat_q   <= hat_sample;
+        end
+    end
+
+    wire signed [12:0] hat_mix = hat_q >>> 2;
 
     // Sum the voices with headroom. The three voices fit a 13 bit signed bus with room to spare.
-    wire signed [12:0] mix = kick_sample + snare_sample + hat_mix;
+    wire signed [12:0] mix = kick_q + snare_q + hat_mix;
 
     // The voices are signed and centred on zero, but the DACs want an unsigned 8 bit level. Add 128
     // to centre it, then clip so a loud hit saturates instead of wrapping round.
@@ -105,6 +129,14 @@ module drum_machine_core #(
                                  (centred < 13'sd0)   ? 8'd0   :
                                                         centred[7:0];
 
-    ip_pwm         pwm_out (.clk(clk), .rst_n(rst_n), .duty(duty), .out(pwm));
-    ip_sigma_delta sd_out  (.clk(clk), .rst_n(rst_n), .in(duty),   .out(sd));
+    // 128 is silence, the same level the voices give while they are in reset.
+    reg [7:0] duty_q;
+
+    always @(posedge clk) begin
+        if (!rst_n) duty_q <= 8'd128;
+        else        duty_q <= duty;
+    end
+
+    ip_pwm         pwm_out (.clk(clk), .rst_n(rst_n), .duty(duty_q), .out(pwm));
+    ip_sigma_delta sd_out  (.clk(clk), .rst_n(rst_n), .in(duty_q),   .out(sd));
 endmodule

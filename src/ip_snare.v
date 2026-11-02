@@ -102,9 +102,24 @@ module ip_snare #(
         end
     end
 
+    // Register both multiply inputs on the same clock, so the multiply starts from flops and the
+    // mix and the envelope stay in step. The sample comes out one clock later.
+    reg signed [11:0] mix_q;
+    reg        [5:0]  level_q;
+
+    always @(posedge clk) begin
+        if (!rst_n) begin
+            mix_q   <= 12'sd0;
+            level_q <= 6'd0;
+        end else begin
+            mix_q   <= mix;
+            level_q <= env[15:10];
+        end
+    end
+
     // Apply the envelope
     wire signed [19:0] product =
-        mix * $signed({1'b0, env[15:10]});
+        mix_q * $signed({1'b0, level_q});
 
     // The shift here is 8, not the 6 used by ip_kick, and that extra 2 bits is not arbitrary: it
     // exists purely to undo the extra gain in `mix`. `mix` = noise_s * 2 + tone, i.e. the noise is

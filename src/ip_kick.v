@@ -127,10 +127,29 @@ module ip_kick #(
         $signed({1'b0, sine}) - 9'sd128;
 
     // --------------------------------------------------
+    // Register both multiply inputs on the same clock, so
+    // the multiply starts from flops and the sine and the
+    // envelope stay in step. The sample comes out one
+    // clock later.
+    // --------------------------------------------------
+    reg signed [8:0] sine_q;
+    reg        [5:0] level_q;
+
+    always @(posedge clk) begin
+        if (!rst_n) begin
+            sine_q  <= 9'sd0;
+            level_q <= 6'd0;
+        end else begin
+            sine_q  <= sine_s;
+            level_q <= env[15:10];
+        end
+    end
+
+    // --------------------------------------------------
     // Apply amplitude envelope
     // --------------------------------------------------
     wire signed [17:0] product =
-        sine_s * $signed({1'b0, env[15:10]});
+        sine_q * $signed({1'b0, level_q});
 
     assign sample = product >>> 6;
 
